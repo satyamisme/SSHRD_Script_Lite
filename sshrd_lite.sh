@@ -1,92 +1,86 @@
-#!/usr/bin/env bash
+#!/usr/bin/bash
 
-
-if [ "$1" = '' ]; then echo "For info please use 'sshrd_lite.sh -h'"; exit; fi
-usage (){
-		echo '[-] Usage: sshrd_lite.sh [parameters]'
-		echo '[-] Basic Parameters |      Optional'
-		echo '----------------------------------------'
-		echo ' -p Product Name     | -m specify model version'
-		echo ' -s iOS Version      | -g decrypt with gaster'
-		echo ' -b Build Version    | -y 1/2 kairos/iBoot64Patcher'
-		echo ' -c SSH connection   | -z 1/2 img4/img4tool'
-		echo '----------------------------------------'
+		
+	if [ "$1" = '' ] || [ "$1" = '-h' ] || [ "$1" = '-help' ] || [ "$1" = '--help' ]; then
+		echo '[-] Usage: sshrd_lite.sh -p product_name -s ios_version'
+		echo '[-] Optional:'
+		echo '           -m/--model specify model version'
+		echo '           -g/--gaster (decrypt with gaster)'
+		echo '           --boot/--patch-iboot-with number (1 = iBoot64Patcher / 2 = kairos)'
+		echo '           --img4/--pack-ramdisk-with number (1 = img4 / 2 = img4tool)'
+		echo
 		echo '[-] For more info see "ifirmware_parser.sh -h"'
-		exit 1
-}
+	exit 1
+	fi
 
 		##############################
 		#       Initialization       #
 		##############################
 
-if [ ! -s 'misc/platform_check.sh' ] || [ ! -s './ifirmware_parser.sh' ]; then
-	if [ -s './ifirmware_parser/README.md' ]; then
+	if [ -s 'ifirmware_parser/README.md' ]; then
 		echo '[-] Setting-up ifirmware parser (for first run) ...'
-		cp -f './ifirmware_parser/ifirmware_parser.sh' './'
-		cp -f './ifirmware_parser/ca-bundle.crt' './'
-		cp -f './ifirmware_parser/misc/platform_check.sh' './misc/platform_check.sh'
-		cp -f './ifirmware_parser/misc/firmwares.json' './misc/firmwares.json'
-	else
+		mv -f './ifirmware_parser/ifirmware_parser.sh' './'
+		mv -f './ifirmware_parser/ca-bundle.crt' './'
+		cp -Rf './ifirmware_parser/misc' './'
+		echo "[!] Removing 'ifirmware_parser' folder ..."
+		rm -Rf './ifirmware_parser'
+	elif [ ! -s 'misc/platform_check.sh' ] || [ ! -s 'ifirmware_parser.sh' ]; then
 		echo '[!] Required module are missing ...'
 		echo '[!] Downloading ifirmware parser module ...'
 		echo '[!] Submodule link: https://github.com/mast3rz3ro/ifirmware_parser'
 		git submodule update --init
 		exit 1
 	fi
-fi
-
+		
 		source './misc/platform_check.sh' # Check platform and set tools
 		
 		chmod -R +x 'tools/'
 		chmod +x './ifirmware_parser.sh' './misc/platform_check.sh' './boot_sshrd.sh'
 
-		########## Switch loop ##########
-while getopts p:m:s:b:i:o:y:z:krducgh option;
-	do
-		case "${option}"
-	in
-		y) patch_iboot_with="${OPTARG}";;
-		z) pack_ramdisk_with="${OPTARG}";;
-		# Options
-		c) ssh_connect="yes";;
-		g) pwndfu_decrypt="yes";;
-		h) usage;; # call function
-	esac
-done
+		while true; do
+		case "$1" in
+        -p|--product) product_name="$2"; shift;;
+        -m|--model) model_version="$2"; shift;;
+        -s|--ios) switch="-s"; version="$2"; shift;;
+        -b|--build) switch="-b"; version="$2"; shift;;
+        --boot|--patch-iboot-with) patch_iboot_with="$2"; shift;;
+        --img4|--pack-ramdisk-with) pack_ramdisk_with="$2"; shift;;
+        *) break
+		esac
+		shift
+		done
 	
-
-if [ "$ssh_connect" = 'yes' ]; then
-		if [ "$iproxy" = '' ]; then echo '[!] Warnning iproxy variable are not set !'; fi
-		if [ "$sshpass" = '' ]; then echo '[!] Warnning sshpass variable are not set !'; fi
-		"$iproxy" 2222 22 &>/dev/null &
-		check=$("$sshpass" -p 'alpine' ssh -o StrictHostKeyChecking=no -p2222 root@localhost echo connected)
-	if [ $check = 'connected' ]; then
-		"$sshpass" -p 'alpine' ssh -o StrictHostKeyChecking=no -p2222 root@localhost
-	else
-		echo '[-] Force closing usbmuxd ...'
-		sudo systemctl stop usbmuxd
-		sudo usbmuxd -p -f
-	fi
-		exit
-fi
-
+	
 		##############################
 		#      Optional switchs      #
 		##############################
 		
-	if [ "$patch_iboot_with" = '2' ]; then
-		patch_iboot_with='iBoot64Patcher' # Windows users
+		# Clean the variable
+		bp_switch=''
+		
+	if [ "$patch_iboot_with" = '1' ]; then
+		patch_iboot_with='iBoot64Patcher'
+	elif [ "$patch_iboot_with" = '2' ]; then
+		patch_iboot_with='kairos'
 	else
-		patch_iboot_with='kairos' # use kairs by default
+		patch_iboot_with='iBoot64Patcher'
+		# haiyuidesu fork of iBoot64Patcher uses -p switch (this is are required for windows)
+		if [ "$platform" = 'Windows' ]; then bp_switch='-p'; fi
 	fi
 	
-	if [ "$pack_ramdisk_with" = '2' ]; then
+	if [ "$pack_ramdisk_with" = '1' ]; then
+		pack_ramdisk_with='img4'
+	elif [ "$pack_ramdisk_with" = '2' ]; then
 		pack_ramdisk_with='img4tool'
 	else
-		pack_ramdisk_with='img4' # use img4 by default
+		pack_ramdisk_with='img4'
 	fi
-
-
+		
+		# Enable decrypting with pwned dfu mode
+	if [[ $1 = '-g' || $2 = '-g' || $3 = '-g' || $4 = '-g' || $5 = '-g' || $6 = '-g' ]]; then pwndfu_decrypt="YES"; fi
+	if [[ $1 = '-gaster' || $2 = '-gaster' || $3 = '-gaster' || $4 = '-gaster' || $5 = '-gaster' || $6 = '-gaster' ]]; then pwndfu_decrypt="YES"; fi
+		
+		
 		input_folder='1_prepare_ramdisk'
 		temp_folder='2_ssh_ramdisk/temp_files'
 		if [ ! -d "$input_folder" ]; then mkdir -p "$input_folder"; fi
@@ -106,14 +100,13 @@ fi
 		
 		# Get firmware keys and download ramdisk
 		# Note: all variables are coming from here !
-		#set -- "$@" '-r -k -o1_prepare_ramdisk' # makes sure to always download the ramdisk and decryption keys
-		export OPTIND='1' # zsh may not work ?
-		source './ifirmware_parser.sh'
-		if [ "$ibec_key" = "" ] && [ "$ibss_key" = '' ]; then echo '[e] Decryptions keys are not set !'; exit; fi
+		source './ifirmware_parser.sh' -p "$product_name" "$switch" "$version" -o "$input_folder" -m "$model_version" -r
+		if [ "$ibec_key" = "" ] && [ "$ibss_key" = '' ]; then echo '[!] Decryptions keys are not set !'; exit; fi
 
 
 		check_ios="$major_ios""$minor_ios"
-		output_folder='2_ssh_ramdisk/'"$product_name"_"$product_model"_"$build_version"
+		# output_folder='2_ssh_ramdisk/'"$product_json"_"$model_json"_"$build_json"_$version
+		output_folder='2_ssh_ramdisk/'"$product_json"_$version
 		if [ ! -d "$output_folder" ]; then mkdir "$output_folder"; fi
 		
 		ibec_file="$input_folder"'/'"$ibec_file"
@@ -125,7 +118,7 @@ fi
 		devicetree_file="$input_folder"'/'"$devicetree_file"
 		
 		# Set boot arguments
-		if [ "$cpid" = '0x8960' ] || [ "$cpid" = '0x7000' ] || [ "$cpid" = '0x7001' ]; then boot_args='rd=md0 debug=0x2014e -v wdt=-1 nand-enable-reformat=1 -restore -n'; else boot_args='rd=md0 debug=0x2014e -v wdt=-1 -n'; fi
+		if [ "$cpid_json" = '0x8960' ] || [ "$cpid_json" = '0x7000' ] || [ "$cpid_json" = '0x7001' ]; then boot_args='rd=md0 debug=0x2014e -v wdt=-1 nand-enable-reformat=1 -restore -n'; else boot_args='rd=md0 debug=0x2014e -v wdt=-1 -n'; fi
 
 
 
@@ -136,10 +129,10 @@ fi
 	########## iBEC/iBSS/iBoot ##########
 
 		# Convert shsh ticket into binary
-		"$img4tool" -e -s 'misc/shsh/'"$cpid"'.shsh' -m "$temp_folder"'/shsh.bin'
+		"$img4tool" -e -s 'misc/shsh/'"$cpid_json"'.shsh' -m "$temp_folder"'/shsh.bin'
 		shsh_file="$temp_folder"'/shsh.bin'
 
-	if [ "$pwndfu_decrypt" = 'yes' ]; then
+	if [ "$pwndfu_decrypt" = 'YES' ]; then
 		# Decyrpt ibec/ibss/iboot with gaster
 		echo '[!] Decrypting with gaster...'
 		echo '[!] Please make sure to put your device into DFU mode'
@@ -151,7 +144,7 @@ fi
 		"$gaster" decrypt "$iboot_file" "$temp_folder"'/iBoot.dec'
 	fi
 
-	if [ "$pwndfu_decrypt" != 'yes' ]; then
+	if [ "$pwndfu_decrypt" != 'YES' ]; then
 		# Decrypt ibec/ibss/iboot with img4
 		"$img4" -i "$ibec_file" -o "$temp_folder"'/iBEC.dec' -k "$ibec_key"
 		"$img4" -i "$ibss_file" -o "$temp_folder"'/iBSS.dec' -k "$ibss_key"
@@ -170,9 +163,9 @@ fi
 	else
 		# Patch ibec/ibss/iboot using iboot64patcher
 		echo '[-] Patching iBoot files using iBoot64Patcher ...'
-		"$iBoot64Patcher" "$temp_folder"'/iBSS.dec' "$temp_folder"'/iBSS.patched'
-		"$iBoot64Patcher" "$temp_folder"'/iBEC.dec' "$temp_folder"'/iBEC.patched' -b "$boot_args"
-		"$iBoot64Patcher" "$temp_folder"'/iBoot.dec' "$temp_folder"'/iBoot.patched'
+		"$iBoot64Patcher" $bp_switch "$temp_folder"'/iBSS.dec' "$temp_folder"'/iBSS.patched'
+		"$iBoot64Patcher" $bp_switch "$temp_folder"'/iBEC.dec' "$temp_folder"'/iBEC.patched' -b "$boot_args"
+		"$iBoot64Patcher" $bp_switch "$temp_folder"'/iBoot.dec' "$temp_folder"'/iBoot.patched'
 	fi
 
 
@@ -236,14 +229,14 @@ if [ "$platform" != 'Darwin' ] && [ "$check_ios" -lt '161' ]; then
 		hdiutil detach -force '/tmp/SSHRD'
 		hdiutil resize -sectors min "$temp_folder"'/reassigned_ramdisk.dmg'
 	elif [ "$platform" = 'Darwin' ] && [ "$check_ios" -lt '161' ]; then
-		echo '[!] Warnning creating RAMDISK may fail on iOS 11.3 or lower.'
+		echo '[Warnning] Creating RAMDISK may fail on iOS 11.3 or lower.'
 		hdiutil resize -size 210MB "$temp_folder"'/ramdisk.dmg'
 		hdiutil attach -mountpoint '/tmp/SSHRD' "$temp_folder"'/ramdisk.dmg'
 		gtar -x --no-overwrite-dir -f 'misc/sshtars/ssh.tar.gz' -C '/tmp/SSHRD/'
 		hdiutil detach -force '/tmp/SSHRD'
 		hdiutil resize -sectors min "$temp_folder"'/ramdisk.dmg'
 	elif [ "$platform" != 'Darwin' ] && [ "$check_ios" -ge '161' ]; then
-		echo "[!] Warnning we are missing a utility for handling APFS system!"
+		echo "[Warnning] We are missing a utility for handling APFS system!"
 		echo "[!] Please select lower than iOS 16.1 and try again."
 fi
 
@@ -255,11 +248,11 @@ fi
 		"$img4" -i "$temp_folder"'/reassigned_ramdisk.dmg' -o "$output_folder"'/ramdisk.img4' -M "$shsh_file" -A -T rdsk
 		
 	elif [ "$platform" = 'Windows' ] && [ "$pack_ramdisk_with" = 'img4tool' ]; then
-		echo '[!] Warnning you have selected packing ramdisk.dmg with img4tool'
-		echo 'img4tool are faster than img4 in packing process'
-		echo 'however packing with img4tool may result in failing to boot the RAMDISK'
-		echo 'please note that this option is only available for Windows users.'
-		echo ''
+		echo '[WARNNING] You have selected packing ramdisk.dmg with img4tool'
+		echo " the img4 fork has in Windows can take a lot of time when packing ramdisk.dmg"
+		echo ' however using img4tool can also result in failing to boot'
+		echo ' please note that this option is only available for Windows users.'
+		echo
 		echo '[-] Packing using img4tool ...'
 		"$img4tool" -i "$temp_folder"'/ramdisk.dmg' -c "$output_folder"'/ramdisk.img4' -s "$shsh_file" -t rdsk
 
@@ -280,4 +273,7 @@ fi
 		rm -rf "$temp_folder"
 
 		echo '[!] All Tasks Completed !'
-		echo '[-] To boot this SSHRD please use: ./boot_sshrd.sh'
+		echo '[-] To boot this SSHRD please use below command:'
+		echo './boot_sshrd.sh -p' "$product_json" '-b' "$build_json"
+
+
